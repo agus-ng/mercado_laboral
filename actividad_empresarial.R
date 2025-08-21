@@ -73,6 +73,9 @@ nivel_nacional <- nivel_nacional %>%
   mutate(auxiliar_año1 = if_else(id == 1 | id %% 12 == 0, id, NA),
          auxiliar_año2 = if_else(id == 1 | id %% 12 == 0, agno, NA))
 
+
+# Graficar ----------------------------------------------------------------
+
 for (act in grepv("actividad", colnames(nivel_nacional))){
   
   auxiliar_actividad <- ciiu[grepl(str_sub(act, start = -1), ciiu[["seccion"]]), "glosa"]
@@ -102,11 +105,38 @@ for (act in grepv("actividad", colnames(nivel_nacional))){
   rm(grafico)
 }
 
+# Generar tabla con promedios --------------------------------------------
 
-prom1 <- nivel_nacional %>% 
-  filter(agno <= 2019) %>% 
-  summarise(mean(actividad_A))
+# Pasar datos relevantes a formato long
+tabla_promedios <- nivel_nacional %>% 
+  mutate(periodo = case_when(
+    agno <= 2019 ~ 1,
+    agno == 2020 ~ 2,
+    agno >= 2021 ~ 3,
+    .default = NA)
+  ) %>% 
+  filter(periodo != 2) %>% 
+  select(-starts_with("nota"), -c(total, id_grafico, NS_NR:auxiliar_año2)) %>% 
+  pivot_longer(cols = starts_with("actividad"), names_to = "actividad", values_to = "ocupados") %>% 
+  mutate(actividad = str_sub(actividad, start = -1, end = -1))
 
-prom2 <- nivel_nacional %>% 
-  filter(agno > 2020) %>% 
-  summarise(mean(actividad_A))
+# Calcular promedios
+tabla_promedios <- tabla_promedios %>% 
+  group_by(actividad, periodo) %>% 
+  summarise(promedio = mean(ocupados)) %>% 
+  mutate(crecimiento = (promedio - lag(promedio))/(lag(promedio))) %>% 
+  ungroup() %>% 
+  mutate(crecimiento = round(crecimiento * 100, 2),
+         periodo = case_when(
+           periodo == 1 ~ "2013-2019",
+           periodo == 3 ~ "2021-2025"
+         ))
+
+# Exportar como markdown
+options(knitr.kable.NA = "")
+knitr::kable(tabla_promedios,
+             digits = 2, 
+             col.names = c("Actividad económica",
+                           "Período",
+                           "Población ocupada promedio (miles)",
+                           "Tasa de crecimiento (%)"))
